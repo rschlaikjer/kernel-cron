@@ -16,21 +16,21 @@ def fetch_kernel_versions():
     kernel_json_s = response.read()
     kernel_json = json.loads(kernel_json_s)
     return [
-        {
-            "version": release["version"],
-            "source":release["source"]
-        }
-        for release in kernel_json["releases"]
-        if 'rc' not in release["version"]
-    ]
+            {
+                "version": release["version"],
+                "source":release["source"]
+                }
+            for release in kernel_json["releases"]
+            if 'rc' not in release["version"]
+            ]
 
 def has_been_built(release):
     return os.path.exists(
-        os.path.join(
-            METADATA_DIRECTORY,
-            release["version"]
-        )
-    )
+            os.path.join(
+                METADATA_DIRECTORY,
+                release["version"]
+                )
+            )
     return False
 
 def parse_version(release):
@@ -51,42 +51,42 @@ def build_kernel(release):
         raise Exception("Failed to parse config ver for {0}".format(release["version"]))
 
     config_filepath = os.path.join(
-        METADATA_DIRECTORY,
-        "config.{v}".format(v=kernel_config_ver)
-    )
+            METADATA_DIRECTORY,
+            "config.{v}".format(v=kernel_config_ver)
+            )
     if not os.path.exists(config_filepath):
         raise Exception("Missing kernel config for series {s}".format(s=kernel_config_ver))
 
     kernel_source_tar = os.path.join(
-        BUILD_DIRECTORY,
-        'linux-{v}.tar.xz'.format(v=release["version"])
-    )
+            BUILD_DIRECTORY,
+            'linux-{v}.tar.xz'.format(v=release["version"])
+            )
     subprocess.Popen([
         'wget',
         '-nc',
         release["source"],
         '-O',
         kernel_source_tar
-    ]).communicate()
+        ]).communicate()
 
     subprocess.Popen([
-            'tar',
-            'xvf',
-            kernel_source_tar,
+        'tar',
+        'xvf',
+        kernel_source_tar,
         ],
         cwd=BUILD_DIRECTORY
-    ).communicate()
+        ).communicate()
 
     subprocess.call([
         'rm',
         '-f',
         kernel_source_tar
-    ])
+        ])
 
     kernel_builddir = os.path.join(
-        BUILD_DIRECTORY,
-        'linux-{v}'.format(v=release["version"])
-    )
+            BUILD_DIRECTORY,
+            'linux-{v}'.format(v=release["version"])
+            )
 
     subprocess.call([
         'cp',
@@ -94,8 +94,8 @@ def build_kernel(release):
         os.path.join(
             kernel_builddir,
             ".config"
-        )
-    ])
+            )
+        ])
 
 
     print "Building {release} using config for series {config}".format(release=release["version"], config=kernel_config_ver)
@@ -104,17 +104,17 @@ def build_kernel(release):
         'oldconfig'
         ],
         cwd=kernel_builddir
-    ).communicate()
+        ).communicate()
 
     subprocess.Popen([
-            'bash',
-            './scripts/config',
-            '--set-str',
-            'CONFIG_LOCALVERSION',
-            '-beast'
+        'bash',
+        './scripts/config',
+        '--set-str',
+        'CONFIG_LOCALVERSION',
+        '-beast'
         ],
         cwd=kernel_builddir
-    ).communicate()
+        ).communicate()
 
     subprocess.Popen([
         'make',
@@ -123,13 +123,13 @@ def build_kernel(release):
         'CONFIG_LOCALVERSION=-beast'
         ],
         cwd=kernel_builddir
-    ).communicate()
+        ).communicate()
 
 
     files_in_src = [
-        f for f in os.listdir(BUILD_DIRECTORY)
-        if os.path.isfile(os.path.join(BUILD_DIRECTORY, f))
-    ]
+            f for f in os.listdir(BUILD_DIRECTORY)
+            if os.path.isfile(os.path.join(BUILD_DIRECTORY, f))
+            ]
 
     debs = [ f for f in files_in_src if f.endswith(".deb")]
 
@@ -138,44 +138,117 @@ def build_kernel(release):
         'mkdir',
         '-p',
         kernel_deb_path
-    ])
+        ])
 
     for deb in debs:
         subprocess.call([
             'mv',
             os.path.join(BUILD_DIRECTORY, deb),
             kernel_deb_path
-        ])
+            ])
 
         #Add the deb to the repo
         subprocess.call([
+            'reprepro',
+            'includedeb',
+            'testing',
+            os.path.join(kernel_deb_path, deb),
+            ],
+            cwd=REPREPO_DIRECTORY
+            )
+
+        subprocess.call([
+            'cp',
+            os.path.join(kernel_builddir, '.config'),
+            os.path.join(kernel_deb_path, 'config')
+            ])
+
+        subprocess.call([
+            'touch',
+            os.path.join(METADATA_DIRECTORY, release["version"])
+            ])
+
+
+        subprocess.call([
+            'rm',
+            '-fr',
+            kernel_builddir
+            ])
+
+        return
+
+def generate_metapackage(release):
+    ns_control = """Section: misc
+Priority: optional
+Homepage: https://kernels.rhye.org/
+Standards-Version: 3.9.2
+
+Package: linux-{dtype}-beast
+Version: {release}
+Maintainer: Ross Schlaikjer <ross@schlaikjer.net>
+Depends: linux-{dtype}-{release}-beast
+Architecture: amd64
+Description: Metapackage for Beast's autogenerated kernels
+ This package depends on the most recent version of the kernels autogenerated by
+ the Rhye build system, targeted at my laptop.
+"""
+
+    # If the release has no minor number, assume it's a zero
+    verstring = release["version"]
+    if verstring.find(".", 2) == -1:
+        verstring = "{0}.0".format(verstring)
+
+    for debtype in ["image", "headers"]:
+        control_dir = os.path.join(
+                METADATA_DIRECTORY, "linux-{dtype}-beast".format(dtype=debtype)
+                )
+        control_file = os.path.join(control_dir, "ns-control")
+        try:
+            os.makedirs(control_dir)
+        except Exception:
+            pass
+        try:
+            with open(control_file, 'w') as outfile:
+                outfile.write(ns_control.format(release=verstring, dtype=debtype))
+            subprocess.call([
+                'equivs-build',
+                'ns-control'
+            ], cwd=control_dir)
+
+        except Exception, e:
+            print e
+
+        files_in_src = [
+                f for f in os.listdir(control_dir)
+                if os.path.isfile(os.path.join(control_dir, f))
+                ]
+
+        debs = [ f for f in files_in_src if f.endswith(".deb")]
+
+        kernel_deb_path = os.path.join(DEB_DIRECTORY, release["version"])
+        subprocess.call([
+            'mkdir',
+            '-p',
+            kernel_deb_path
+            ])
+
+        for deb in debs:
+            subprocess.call([
+                'mv',
+                os.path.join(control_dir, deb),
+                kernel_deb_path
+                ])
+
+            #Add the deb to the repo
+            subprocess.call([
                 'reprepro',
                 'includedeb',
                 'testing',
                 os.path.join(kernel_deb_path, deb),
-            ],
-            cwd=REPREPO_DIRECTORY
-        )
+                ],
+                cwd=REPREPO_DIRECTORY
+                )
 
-    subprocess.call([
-        'cp',
-        os.path.join(kernel_builddir, '.config'),
-        os.path.join(kernel_deb_path, 'config')
-    ])
-
-    subprocess.call([
-        'touch',
-        os.path.join(METADATA_DIRECTORY, release["version"])
-    ])
-
-
-    subprocess.call([
-        'rm',
-        '-fr',
-        kernel_builddir
-    ])
-
-    return
 
 def notify_failed(release, e):
     import smtplib
@@ -206,14 +279,15 @@ def main():
     open(LOCKFILE, 'a').close()
 
     kernel_vers = [
-        version for version in fetch_kernel_versions()
-        if not version['version'].startswith("next")
-    ]
+            version for version in fetch_kernel_versions()
+            if not version['version'].startswith("next")
+            ]
     for version in kernel_vers:
         if not has_been_built(version):
             try:
                 build_kernel(version)
                 notify_built(version)
+                generate_metapackage(version)
             except Exception, e:
                 notify_failed(version, e)
     os.remove(LOCKFILE)
