@@ -100,13 +100,16 @@ def build_kernel(release, dist):
         ])
 
 
-    print "Building {release} using config for series {config}".format(release=release["version"], config=kernel_config_ver)
-    subprocess.Popen([
-        'make',
-        'oldconfig'
-        ],
-        cwd=kernel_builddir
-        ).communicate()
+    print "Building {release} for dist {dist} using config for series {config}".format(
+        release=release["version"],
+        config=kernel_config_ver,
+        dist=dist,
+    )
+    subprocess.call(
+        'yes "" | make oldconfig',
+        cwd=kernel_builddir,
+        shell=True
+    )
 
     subprocess.Popen([
         'bash',
