@@ -198,6 +198,18 @@ def build_kernel(release, dist):
         kernel_builddir
         ])
 
+    kernel_prefix = 'linux-{version}-{dist}'.format(
+        version=release["version"],
+        dist=dist
+    )
+    files_to_clean = [ f for f in files_in_src if f.startswith(kernel_prefix) ]
+    for f in files_to_clean:
+        subprocess.call([
+            'rm',
+            '-f',
+            os.path.join(BUILD_DIRECTORY, f)
+        ])
+
     return
 
 def generate_metapackage(release, dist):
