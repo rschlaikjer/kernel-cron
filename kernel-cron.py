@@ -33,6 +33,21 @@ def has_been_built(release, dist):
                 )
     return os.path.exists(filepath)
 
+def get_attempt_filepath(release, dist):
+    return os.path.join(
+        METADATA_DIRECTORY,
+        ".".join([release["version"], dist, "attempt"])
+    )
+
+def record_attempt(release, dist):
+    subprocess.call([
+        'touch',
+        get_attempt_filepath(release, dist)
+    ])
+
+def has_been_attempted(release, dist):
+    return os.path.exists(get_attempt_filepath(release, dist))
+
 def parse_version(release):
     major_offset = release["version"].index(".")
     minor_offset = 0
@@ -312,8 +327,10 @@ def main():
             ]
     for dist in DISTS:
         for version in kernel_vers:
-            if not has_been_built(version, dist):
+            if (not has_been_built(version, dist)
+                and not has_been_attempted(version, dist)):
                 try:
+                    record_attempt(version, dist)
                     build_kernel(version, dist)
                     notify_built(version, dist)
                     generate_metapackage(version, dist)
