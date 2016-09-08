@@ -11,7 +11,7 @@ REPREPO_DIRECTORY = "/var/www/debian/"
 METADATA_DIRECTORY = "/home/ross/kernelbuilder/"
 LOCKFILE = "/tmp/kernel-builder-lock"
 
-DISTS = [ 'beast', 'mjolnir' ]
+DISTS = [ 'beast', 'mjolnir', 'saddle' ]
 
 def fetch_kernel_versions():
     response = urllib2.urlopen(KERNEL_JSON_URI)
